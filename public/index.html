@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Safer - Simple Gnosis Safe Signing</title>
+    <!-- Load HTMX from CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.2"></script>
+    <!-- Add Web3-Onboard dependencies -->
+    <script src="https://unpkg.com/@web3-onboard/core@2.24.0/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/@web3-onboard/ledger@2.4.6/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/@web3-onboard/trezor@2.4.0/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/@web3-onboard/injected-wallets@2.11.3/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2em auto;
+        max-width: 800px;
+        line-height: 1.5;
+      }
+      h1, h2, h3 {
+        color: #333;
+      }
+      label {
+        font-weight: bold;
+        display: block;
+        margin: 1em 0 0.3em;
+      }
+      input, textarea {
+        width: 100%;
+        padding: 0.5em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        margin-top: 1em;
+        padding: 0.5em 1em;
+        background: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0055aa;
+      }
+      button:disabled {
+        background: #cccccc;
+        cursor: not-allowed;
+      }
+      .result {
+        margin-top: 1em;
+        background: #f8f8f8;
+        padding: 1em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      pre {
+        background: #f0f0f0;
+        padding: 0.5em;
+        overflow-x: auto;
+        border-radius: 4px;
+      }
+      .error {
+        color: #cc0000;
+        background: #fff0f0;
+        padding: 1em;
+        border: 1px solid #ffcccc;
+        border-radius: 4px;
+      }
+      .success {
+        color: #008800;
+        background: #f0fff0;
+        padding: 1em;
+        border: 1px solid #ccffcc;
+        border-radius: 4px;
+      }
+      .hash {
+        font-family: monospace;
+        word-break: break-all;
+      }
+      .actions {
+        margin-top: 1em;
+      }
+      .safe-details {
+        background: #f0f8ff;
+        padding: 1em;
+        border: 1px solid #cce0ff;
+        border-radius: 4px;
+        margin-bottom: 1.5em;
+      }
+      .safe-address {
+        font-family: monospace;
+        font-weight: bold;
+      }
+      .progress-container {
+        width: 100%;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+        margin: 1em 0;
+      }
+      .progress-bar {
+        height: 24px;
+        background-color: #4CAF50;
+        border-radius: 4px;
+        text-align: center;
+        line-height: 24px;
+        color: white;
+      }
+      .owner-list {
+        margin-top: 1em;
+      }
+      .owner {
+        display: flex;
+        align-items: center;
+        padding: 0.5em;
+        border-bottom: 1px solid #eee;
+      }
+      .owner:last-child {
+        border-bottom: none;
+      }
+      .owner-address {
+        flex-grow: 1;
+        font-family: monospace;
+        font-size: 0.9em;
+      }
+      .signed {
+        color: #4CAF50;
+        font-weight: bold;
+      }
+      .unsigned {
+        color: #999;
+      }
+      .tabs {
+        display: flex;
+        margin-bottom: 1em;
+        border-bottom: 1px solid #ddd;
+      }
+      .tab {
+        padding: 0.5em 1em;
+        cursor: pointer;
+        margin-right: 0.5em;
+        border: 1px solid transparent;
+        border-bottom: none;
+      }
+      .tab.active {
+        background: #f8f8f8;
+        border-color: #ddd;
+        border-bottom-color: white;
+        margin-bottom: -1px;
+        border-radius: 4px 4px 0 0;
+      }
+      /* Hardware wallet section styles */
+      .hardware-wallet-section {
+        margin-top: 1.5em;
+        border-top: 1px solid #eee;
+        padding-top: 1.5em;
+      }
+
+      .wallet-buttons {
+        display: flex;
+        gap: 1em;
+        flex-wrap: wrap;
+        margin: 1em 0;
+      }
+
+      .wallet-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 0.75em 1.25em;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .wallet-button:hover {
+        background-color: #e9ecef;
+      }
+
+      .wallet-button img {
+        width: 24px;
+        height: 24px;
+      }
+
+      #signatureModal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .modal-content {
+        background-color: white;
+        padding: 2em;
+        border-radius: 8px;
+        max-width: 600px;
+        width: 90%;
+      }
+
+      .close-modal {
+        float: right;
+        cursor: pointer;
+        font-size: 1.5em;
+      }
+
+      .safe-config-form {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 1.5em;
+        margin-bottom: 2em;
+      }
+
+      .small-button {
+        font-size: 0.8em;
+        padding: 0.3em 0.6em;
+        margin-left: 1em;
+        background: #f0f0f0;
+        color: #333;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+
+      .small-button:hover {
+        background: #e0e0e0;
+      }
+
+      .details-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5em;
+      }
+
+      .label {
+        font-weight: bold;
+        width: 100px;
+      }
+
+      .value {
+        word-break: break-all;
+        flex: 1;
+      }
+
+      .security-tip-box {
+        background-color: #f8f9fa;
+        border-left: 4px solid #0066cc;
+        padding: 1em;
+        margin-bottom: 1.5em;
+        border-radius: 0 4px 4px 0;
+      }
+
+      .security-tip-box h4 {
+        margin-top: 0;
+        color: #0066cc;
+      }
+
+      .security-tip-box a {
+        font-weight: bold;
+        color: #0066cc;
+        text-decoration: underline;
+      }
+    </style>
+</head>
+<body>
+    <!-- Add this right after the opening body tag, before the main content -->
+    <div id="safeAddressForm" style="display: none;" class="safe-config-form">
+      <h3>Configure Safe</h3>
+      <p>No Safe address was found in environment variables. Please enter a Safe address to continue:</p>
+
+      <form id="configForm">
+        <label for="safeAddress">Safe Address:</label>
+        <input
+          type="text"
+          id="safeAddress"
+          name="safeAddress"
+          placeholder="0x..."
+          required
+        />
+
+        <button type="submit">Save Configuration</button>
+      </form>
+    </div>
+
+    <div id="main-content">
+      <h1>Safer - Simple Gnosis Safe Signing</h1>
+
+      <!-- Safe Details Section - Loads on page load -->
+      <div class="safe-details" hx-get="/safeDetails" hx-trigger="load" hx-swap="innerHTML">
+          <!-- Safe details will load here -->
+          <p>Loading Safe details...</p>
+      </div>
+
+      <!-- Tabs for the workflow -->
+      <div class="tabs">
+        <div class="tab active" id="tab-build" onclick="activateTab('build')">Build Transaction</div>
+        <div class="tab" id="tab-sign" onclick="activateTab('sign')">Sign & Execute</div>
+      </div>
+
+      <!-- Transaction Build Tab -->
+      <div id="build-section">
+        <p>Fill out the required transaction parameters to build a Safe transaction:</p>
+
+        <form
+            hx-post="/buildSafeTx"
+            hx-trigger="submit"
+            hx-target="#txDataDisplay"
+            hx-swap="innerHTML"
+        >
+            <label for="to">To Address:</label>
+            <input
+                type="text"
+                id="to"
+                name="to"
+                placeholder="0x..."
+                required
+            />
+
+            <label for="value">Value (ETH):</label>
+            <input
+                type="text"
+                id="value"
+                name="value"
+                placeholder="0.0"
+                value="0"
+                required
+            />
+
+            <label for="data">Data (hex):</label>
+            <textarea
+                id="data"
+                name="data"
+                placeholder="0x..."
+                rows="4"
+            >0x</textarea>
+
+            <label for="operation">Operation:</label>
+            <select id="operation" name="operation">
+                <option value="0">Call</option>
+                <option value="1">DelegateCall</option>
+            </select>
+
+            <label for="safeTxGas">Safe Tx Gas:</label>
+            <input
+                type="text"
+                id="safeTxGas"
+                name="safeTxGas"
+                value="0"
+            />
+
+            <label for="baseGas">Base Gas:</label>
+            <input
+                type="text"
+                id="baseGas"
+                name="baseGas"
+                value="0"
+            />
+
+            <label for="gasPrice">Gas Price:</label>
+            <input
+                type="text"
+                id="gasPrice"
+                name="gasPrice"
+                value="0"
+            />
+
+            <label for="gasToken">Gas Token:</label>
+            <input
+                type="text"
+                id="gasToken"
+                name="gasToken"
+                value="0x0000000000000000000000000000000000000000"
+            />
+
+            <label for="refundReceiver">Refund Receiver:</label>
+            <input
+                type="text"
+                id="refundReceiver"
+                name="refundReceiver"
+                value="0x0000000000000000000000000000000000000000"
+            />
+
+            <button type="submit">Build Transaction</button>
+        </form>
+      </div>
+
+      <!-- Transaction Sign Tab -->
+      <div id="sign-section" style="display:none;">
+        <div class="security-tip-box">
+          <h4>🔐 Security Tip</h4>
+          <p>Before signing any transaction, verify what you're signing by checking the transaction hash at
+            <a href="https://www.safehashpreview.com/" target="_blank" rel="noopener noreferrer">SafeHashPreview.com</a>.
+          </p>
+          <p>This independent tool lets you confirm exactly what actions your transaction will perform.</p>
+        </div>
+
+        <button
+          hx-get="/signTx"
+          hx-target="#signatureArea"
+          hx-swap="innerHTML">
+          Refresh Signing Information
+        </button>
+
+        <div id="signatureArea">
+          <!-- Signature information will be loaded here by the above button -->
+        </div>
+
+        <!-- New hardware wallet section -->
+        <div class="hardware-wallet-section">
+          <h3>Sign with Hardware Wallet</h3>
+          <p>Connect your hardware wallet to sign the transaction directly in your browser:</p>
+
+          <button id="connectWallet" class="button">Connect Wallet</button>
+
+          <div id="walletStatus"></div>
+        </div>
+      </div>
+
+      <div id="txDataDisplay" class="result">
+          <!-- The result from /buildSafeTx would appear here -->
+      </div>
+
+      <!-- Progress Container - Refreshes every 10 seconds -->
+      <div id="signaturesProgress"
+           hx-get="/checkSignatures"
+           hx-trigger="load, every 10s"
+           hx-swap="innerHTML">
+        <!-- Signature progress will be loaded here -->
+      </div>
+
+      <!-- Signature Modal -->
+      <div id="signatureModal">
+        <div class="modal-content">
+          <span class="close-modal" onclick="closeModal()">&times;</span>
+          <h3>Signing Transaction</h3>
+          <p id="modalMessage">Please follow the instructions on your device...</p>
+          <div id="modalContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Function to switch between tabs
+      function activateTab(tabName) {
+        // Update tab appearance
+        document.querySelectorAll('.tab').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        document.getElementById('tab-' + tabName).classList.add('active');
+
+        // Show/hide the corresponding sections
+        if (tabName === 'build') {
+          document.getElementById('build-section').style.display = 'block';
+          document.getElementById('sign-section').style.display = 'none';
+        } else {
+          document.getElementById('build-section').style.display = 'none';
+          document.getElementById('sign-section').style.display = 'block';
+
+          // Force a refresh of signing info when tab is activated
+          htmx.trigger("#signatureArea", "htmx:load");
+          htmx.trigger("#signaturesProgress", "htmx:load");
+        }
+      }
+
+      // Handle response for a successful transaction creation by showing sign tab
+      document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'txDataDisplay' &&
+            event.detail.target.innerHTML.includes('Transaction Hash')) {
+          activateTab('sign');
+        }
+      });
+
+      // Web3-Onboard integration
+      let web3Onboard;
+      let wallet;
+      let signer;
+      let txHash;
+
+      // Initialize Web3-Onboard on page load
+      document.addEventListener('DOMContentLoaded', function() {
+        initWeb3Onboard();
+
+        // Add event listener for wallet connection
+        document.getElementById('connectWallet').addEventListener('click', function() {
+          connectAnyWallet();
+        });
+      });
+
+      async function initWeb3Onboard() {
+        const ledgerModule = window.ledgerModule.default({
+          rpcUrl: 'https://eth.llamarpc.com' // Default RPC, will be overridden
+        });
+
+        const trezorModule = window.trezorModule.default({
+          email: 'support@safer.eth',
+          appUrl: 'https://safe.global'
+        });
+
+        const injectedModule = window.injectedWalletsModule.default();
+
+        web3Onboard = window.Onboard.default({
+          wallets: [ledgerModule, trezorModule, injectedModule],
+          chains: [
+            {
+              id: '0x1',
+              token: 'ETH',
+              label: 'Ethereum Mainnet',
+              rpcUrl: 'https://eth.llamarpc.com'
+            },
+            {
+              id: '0x5',
+              token: 'ETH',
+              label: 'Goerli',
+              rpcUrl: 'https://eth-goerli.api.onfinality.io/public'
+            },
+            {
+              id: '0x89',
+              token: 'MATIC',
+              label: 'Polygon',
+              rpcUrl: 'https://polygon-rpc.com'
+            }
+          ],
+          appMetadata: {
+            name: 'Safer',
+            description: 'Safe transaction builder and signer',
+            icon: 'https://safe.global/images/logo.svg',
+            recommendedInjectedWallets: [
+              { name: 'MetaMask', url: 'https://metamask.io' }
+            ]
+          }
+        });
+      }
+
+      // Connect wallet function using Web3-Onboard's built-in selector
+      async function connectAnyWallet() {
+        try {
+          // Fetch transaction hash from the page
+          const hashElement = document.querySelector('#txDataDisplay .hash-value');
+          if (!hashElement) {
+            alert('Transaction hash not found. Please build a transaction first.');
+            return;
+          }
+
+          txHash = hashElement.textContent.trim();
+          document.getElementById('walletStatus').innerHTML = `<p>Connecting wallet...</p>`;
+
+          // Let Web3-Onboard handle wallet selection with its built-in UI
+          const wallets = await web3Onboard.connectWallet();
+          if (wallets.length === 0) {
+            document.getElementById('walletStatus').innerHTML = '<p class="error">No wallet connected. Please try again.</p>';
+            return;
+          }
+
+          wallet = wallets[0];
+
+          // Create ethers provider and signer
+          const ethersProvider = new ethers.providers.Web3Provider(wallet.provider);
+          signer = ethersProvider.getSigner();
+          const address = await signer.getAddress();
+
+          document.getElementById('walletStatus').innerHTML =
+            `<p class="success">✅ Connected to ${wallet.label}: ${address}</p>`;
+
+          // Show modal for signing
+          showModal(`
+            <p>You're about to sign transaction hash: <strong>${txHash}</strong></p>
+            <p>Account: ${address}</p>
+            <button id="signButton" class="btn btn-primary">Sign Transaction</button>
+            <button onclick="closeModal()" class="btn btn-secondary">Cancel</button>
+          `);
+
+          // Add event listener to sign button
+          document.getElementById('signButton').addEventListener('click', signTransaction);
+        } catch (error) {
+          console.error('Wallet connection error:', error);
+          document.getElementById('walletStatus').innerHTML =
+            `<p class="error">Error: ${error.message || 'Unknown error'}</p>`;
+        }
+      }
+
+      async function signTransaction() {
+        try {
+          document.getElementById('modalMessage').textContent = 'Please confirm the transaction on your device...';
+          document.getElementById('signButton').disabled = true;
+
+          // Sign the transaction hash
+          const signature = await signer.signMessage(ethers.utils.arrayify(txHash));
+
+          // Submit the signature to the server
+          const response = await fetch('/submitHardwareWalletSignature', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ signature })
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            document.getElementById('modalMessage').textContent = 'Transaction signed successfully!';
+            document.getElementById('modalContent').innerHTML = `
+              <div class="success">
+                <p>✅ Signature has been recorded</p>
+                <button onclick="closeModalAndRefresh()" class="btn btn-success">Close</button>
+              </div>
+            `;
+          } else {
+            throw new Error(result.error || 'Failed to submit signature');
+          }
+        } catch (error) {
+          console.error('Signing error:', error);
+          document.getElementById('modalMessage').textContent = 'Signing failed';
+          document.getElementById('modalContent').innerHTML = `
+            <div class="error">
+              <p>Error: ${error.message || 'Unknown error'}</p>
+              <button onclick="closeModal()" class="btn btn-secondary">Close</button>
+            </div>
+          `;
+          document.getElementById('signButton').disabled = false;
+        }
+      }
+
+      function showModal(message) {
+        document.getElementById('modalContent').innerHTML = message;
+        document.getElementById('signatureModal').style.display = 'flex';
+      }
+
+      function closeModal() {
+        document.getElementById('signatureModal').style.display = 'none';
+      }
+
+      function closeModalAndRefresh() {
+        closeModal();
+        // Refresh the signature status
+        htmx.trigger("#signaturesProgress", "htmx:load");
+      }
+    </script>
+</body>
+</html>
