@@ -1,5 +1,8 @@
 # Safer
 
+> [!WARNING]
+> This repo is no longer maintained.
+
 Safer is a tool that helps you sign & submit transactions to a Safe, without requiring any interaction with Safe's backend or frontend.
 
 Safer is a set of Foundry scripts that can be used as fallback in case Safe App is down and the blockchain is the only thing that can be trusted.
