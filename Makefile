@@ -11,6 +11,7 @@ install: clean
 
 tx:
 	npx create-safe-tx
+	mv tx.json data/tx.json
 
 hash:
 	forge script script/HashData.s.sol
